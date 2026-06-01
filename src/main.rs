@@ -11,6 +11,15 @@ enum Mode {
     Insert,
 }
 
+/// How the plugin draws itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RenderStyle {
+    /// Self-drawn with raw ANSI (owo-colors). Full control, fixed palette.
+    Ansi,
+    /// Zellij's native UI components — follows the active theme.
+    Native,
+}
+
 struct State {
     tabs: Vec<TabInfo>,
     filter: String,
@@ -22,6 +31,7 @@ struct State {
     ignore_case: bool,
     start_in_insert: bool,
     selection_color: AnsiColors,
+    render_style: RenderStyle,
 }
 
 impl Default for State {
@@ -34,6 +44,7 @@ impl Default for State {
             ignore_case: true,
             start_in_insert: false,
             selection_color: AnsiColors::Yellow,
+            render_style: RenderStyle::Ansi,
         }
     }
 }
@@ -136,6 +147,12 @@ impl ZellijPlugin for State {
         if let Some(c) = configuration.remove("selection_color") {
             self.selection_color = c.trim().into();
         }
+        if let Some(v) = configuration.remove("ui") {
+            self.render_style = match v.trim().to_lowercase().as_str() {
+                "native" => RenderStyle::Native,
+                _ => RenderStyle::Ansi,
+            };
+        }
 
         self.mode = if self.start_in_insert {
             Mode::Insert
@@ -166,7 +183,17 @@ impl ZellijPlugin for State {
         }
     }
 
-    fn render(&mut self, _rows: usize, _cols: usize) {
+    fn render(&mut self, rows: usize, cols: usize) {
+        match self.render_style {
+            RenderStyle::Ansi => self.render_ansi(rows, cols),
+            RenderStyle::Native => self.render_native(rows, cols),
+        }
+    }
+}
+
+impl State {
+    /// Self-drawn renderer using raw ANSI escapes (owo-colors).
+    fn render_ansi(&self, _rows: usize, _cols: usize) {
         let (badge, hint) = match self.mode {
             Mode::Normal => (
                 " NORMAL ".black().on_cyan().bold().to_string(),
@@ -217,6 +244,12 @@ impl ZellijPlugin for State {
 
         println!();
         println!("{}", hint);
+    }
+
+    /// Renderer using Zellij's native UI components (theme-aware).
+    /// TODO: implemented in a follow-up commit; falls back to ANSI for now.
+    fn render_native(&self, rows: usize, cols: usize) {
+        self.render_ansi(rows, cols);
     }
 }
 
