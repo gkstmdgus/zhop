@@ -1,0 +1,22 @@
+[package]
+name = "zhop"
+version = "0.1.0"
+edition = "2021"
+authors = ["Teo Han <teo.han@narnia.ai>"]
+description = "A modal (vim-style) fuzzy tab switcher plugin for Zellij"
+license = "MIT"
+repository = "https://github.com/teohan/zhop"
+keywords = ["zellij", "plugin", "vim", "tab-switcher", "wasm"]
+publish = false
+
+[dependencies]
+# Pinned to 0.41 to stay compatible with Zellij 0.43.x (wasmtime runtime).
+# Zellij 0.44 switched the WASM runtime to WASMI and bumped zellij-tile to 0.44.
+zellij-tile = "0.41"
+owo-colors = "3"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,3 @@
+# Build for the WASI preview1 target that Zellij 0.43.x loads via wasmtime.
+[build]
+target = "wasm32-wasip1"

@@ -1,0 +1,70 @@
+# zhop
+
+A modal, **vim-style** fuzzy **tab switcher** plugin for [Zellij](https://zellij.dev).
+
+Most Zellij tab pickers (e.g. [room](https://github.com/rvcas/room)) are
+type-to-filter: every keystroke goes into the filter, so you can't use bare
+`j`/`k` to move. `zhop` solves this with two modes:
+
+| Mode | Keys | Action |
+|------|------|--------|
+| **NORMAL** (default) | `j` / `k` (or `↓` / `↑`) | move selection |
+| | `g` / `G` | jump to first / last |
+| | `Enter` | switch to the highlighted tab |
+| | `/` or `i` | enter INSERT (filter) mode |
+| | `q` / `Esc` / `Ctrl+c` | close |
+| **INSERT** (filter) | any text | append to fuzzy filter |
+| | `Backspace` | delete one char |
+| | `Ctrl+u` | clear filter |
+| | `↓` / `↑`, `Ctrl+n` / `Ctrl+k` / `Ctrl+p` | move selection |
+| | `Esc` | back to NORMAL (keeps the filter) |
+| | `Enter` | switch to the highlighted tab |
+
+So you `j/k` to fly around, and only press `/` when you want to search by name.
+
+## Configuration
+
+Passed via the keybinding block (all optional):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ignore_case` | `true` | case-insensitive filtering |
+| `start_in_insert` | `false` | open directly in filter mode |
+| `selection_color` | `yellow` | accent color for the highlighted row |
+
+## Compatibility
+
+Built against `zellij-tile = 0.41`, which targets **Zellij 0.43.x** (wasmtime
+runtime). Zellij 0.44 switched the WASM runtime to WASMI and bumped the plugin
+API to 0.44, so a separate build will be needed for 0.44+.
+
+## Build
+
+```sh
+./build.sh            # release build → target/wasm32-wasip1/release/zhop.wasm
+```
+
+Requires the `wasm32-wasip1` target: `rustup target add wasm32-wasip1`.
+
+## Install
+
+```sh
+cp target/wasm32-wasip1/release/zhop.wasm ~/.config/zellij/plugins/zhop.wasm
+```
+
+Then bind it (in `~/.config/zellij/config.kdl`, inside `keybinds`):
+
+```kdl
+shared_except "locked" {
+    bind "Ctrl y" {
+        LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zhop.wasm" {
+            floating true
+            ignore_case true
+        }
+    }
+}
+```
+
+## License
+
+MIT
