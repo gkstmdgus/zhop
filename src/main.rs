@@ -35,6 +35,14 @@ struct State {
     start_in_insert: bool,
     selection_color: AnsiColors,
     render_style: RenderStyle,
+    /// Target width in columns. `LaunchOrFocusPlugin` can't size a plugin pane,
+    /// so when set the plugin shrinks its own floating pane to ~this width.
+    target_width: Option<usize>,
+
+    // ── auto-resize bookkeeping ──
+    width_settled: bool,
+    prev_cols: usize,
+    resize_attempts: u16,
 }
 
 impl Default for State {
@@ -48,6 +56,10 @@ impl Default for State {
             start_in_insert: false,
             selection_color: AnsiColors::Yellow,
             render_style: RenderStyle::Ansi,
+            target_width: None,
+            width_settled: false,
+            prev_cols: 0,
+            resize_attempts: 0,
         }
     }
 }
@@ -156,6 +168,9 @@ impl ZellijPlugin for State {
                 _ => RenderStyle::Ansi,
             };
         }
+        if let Some(v) = configuration.remove("width") {
+            self.target_width = v.trim().parse::<usize>().ok().filter(|w| *w > 0);
+        }
 
         self.mode = if self.start_in_insert {
             Mode::Insert
@@ -191,6 +206,38 @@ impl ZellijPlugin for State {
             RenderStyle::Ansi => self.render_ansi(rows, cols),
             RenderStyle::Native => self.render_native(rows, cols),
         }
+        self.autoresize_width(cols);
+    }
+}
+
+impl State {
+    /// Work around `LaunchOrFocusPlugin` not accepting pane dimensions: when a
+    /// `target_width` is configured, nudge our own floating pane narrower (one
+    /// relative resize step per frame) until we reach it. Each resize triggers
+    /// a re-render, so this converges over a few frames and then settles.
+    fn autoresize_width(&mut self, cols: usize) {
+        let Some(target) = self.target_width else { return };
+        if self.width_settled {
+            return;
+        }
+        // reached the target → done
+        if cols <= target {
+            self.width_settled = true;
+            return;
+        }
+        // last resize didn't shrink us (hit a minimum) → stop trying
+        if self.prev_cols != 0 && cols >= self.prev_cols {
+            self.width_settled = true;
+            return;
+        }
+        // safety cap against an unexpected resize loop
+        if self.resize_attempts >= 100 {
+            self.width_settled = true;
+            return;
+        }
+        self.prev_cols = cols;
+        self.resize_attempts += 1;
+        resize_focused_pane_with_direction(Resize::Decrease, Direction::Right);
     }
 }
 
