@@ -1,6 +1,9 @@
 use owo_colors::{AnsiColors, OwoColorize};
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
+use zellij_tile::ui_components::{
+    print_nested_list_with_coordinates, print_text_with_coordinates, NestedListItem, Text,
+};
 
 /// Interaction mode, vim-style.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -246,10 +249,50 @@ impl State {
         println!("{}", hint);
     }
 
-    /// Renderer using Zellij's native UI components (theme-aware).
-    /// TODO: implemented in a follow-up commit; falls back to ANSI for now.
-    fn render_native(&self, rows: usize, cols: usize) {
-        self.render_ansi(rows, cols);
+    /// Renderer using Zellij's native UI components — follows the active theme.
+    fn render_native(&self, _rows: usize, _cols: usize) {
+        // header: mode word (themed) + current filter
+        let mode = match self.mode {
+            Mode::Normal => "NORMAL",
+            Mode::Insert => "INSERT",
+        };
+        let filter = if self.filter.is_empty() {
+            "(no filter)".to_string()
+        } else {
+            self.filter.clone()
+        };
+        let header = format!("{}  {}", mode, filter);
+        let header = Text::new(header).color_range(2, 0..mode.chars().count());
+        print_text_with_coordinates(header, 0, 0, None, None);
+
+        // tab list — `.selected()` and active coloring use the theme palette
+        let items: Vec<NestedListItem> = self
+            .viewable_tabs_iter()
+            .map(|tab| {
+                let label = format!("{}  {}", tab.position + 1, tab.name);
+                let mut item = NestedListItem::new(label);
+                if tab.active {
+                    item = item.color_range(0, ..);
+                }
+                if self.selected == Some(tab.position) {
+                    item = item.selected();
+                }
+                item
+            })
+            .collect();
+
+        if items.is_empty() {
+            print_text_with_coordinates(Text::new("no matching tabs"), 0, 2, None, None);
+            return;
+        }
+        let count = items.len();
+        print_nested_list_with_coordinates(items, 0, 2, None, None);
+
+        let hint = match self.mode {
+            Mode::Normal => "j/k move · / filter · enter open · q quit",
+            Mode::Insert => "type to filter · esc normal · enter open",
+        };
+        print_text_with_coordinates(Text::new(hint), 0, 2 + count + 1, None, None);
     }
 }
 

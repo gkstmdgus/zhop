@@ -30,7 +30,17 @@ Passed via the keybinding block (all optional):
 |-----|---------|-------------|
 | `ignore_case` | `true` | case-insensitive filtering |
 | `start_in_insert` | `false` | open directly in filter mode |
-| `selection_color` | `yellow` | accent color for the highlighted row |
+| `selection_color` | `yellow` | accent color for the highlighted row (ANSI renderer only) |
+| `ui` | `ansi` | renderer: `ansi` (self-drawn, fixed palette) or `native` (Zellij UI components, follows the active theme) |
+
+### Renderers
+
+- `ui "ansi"` (default) — draws rows with raw ANSI via owo-colors. Full control,
+  but colors are fixed and don't follow your Zellij theme.
+- `ui "native"` — uses Zellij's built-in `Text` / `NestedListItem` UI components,
+  the same primitives the built-in plugins (session-manager, strider) use. The
+  selection highlight and accents automatically match the active theme. The
+  `selection_color` option is ignored in this mode.
 
 ## Compatibility
 
@@ -60,6 +70,7 @@ shared_except "locked" {
         LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zhop.wasm" {
             floating true
             ignore_case true
+            // ui "native"   // uncomment to use the theme-aware renderer
         }
     }
 }
