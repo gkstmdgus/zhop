@@ -1,0 +1,32 @@
+name: release
+
+# Build the wasm and attach it to a GitHub Release whenever a v* tag is pushed.
+# Public-repo Actions minutes are free, so this costs nothing.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # needed to create/update the release
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add wasm32-wasip1 target
+        run: rustup target add wasm32-wasip1
+
+      - name: Build release wasm
+        run: cargo build --release # .cargo/config.toml pins the wasm32-wasip1 target
+
+      - name: Collect artifact
+        run: cp target/wasm32-wasip1/release/zhop.wasm zhop.wasm
+
+      - name: Publish release with wasm asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: zhop.wasm
+          generate_release_notes: true
