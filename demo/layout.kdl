@@ -1,0 +1,14 @@
+// Demo session: a tab bar plus five named tabs to switch between.
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+    }
+    tab name="editor"
+    tab name="server"
+    tab name="logs"
+    tab name="git"
+    tab name="notes"
+}

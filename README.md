@@ -2,6 +2,11 @@
 
 A modal, **vim-style** fuzzy **tab switcher** plugin for [Zellij](https://zellij.dev).
 
+![zhop in action](assets/demo.gif)
+
+`Ctrl+y` opens the floating switcher; `j`/`k` to move, `/` to filter by name,
+`Enter` to jump to the tab.
+
 Most Zellij tab pickers (e.g. [room](https://github.com/rvcas/room)) are
 type-to-filter: every keystroke goes into the filter, so you can't use bare
 `j`/`k` to move. `zhop` solves this with two modes:

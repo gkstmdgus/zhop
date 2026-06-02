@@ -1,0 +1,16 @@
+// Minimal, clean Zellij config used only for recording the demo GIF.
+// Ctrl+y opens zhop; Ctrl+q quits. Everything else is stripped for clarity.
+keybinds clear-defaults=true {
+    normal {
+        bind "Ctrl y" {
+            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zhop.wasm" {
+                floating true
+                ignore_case true
+                ui "native"
+            }
+        }
+        bind "Ctrl q" { Quit; }
+    }
+}
+pane_frames false
+default_mode "normal"
