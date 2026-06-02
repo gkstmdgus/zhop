@@ -422,29 +422,34 @@ impl State {
 
     /// Self-drawn renderer using raw ANSI escapes (owo-colors).
     fn render_ansi(&self, _rows: usize, _cols: usize) {
+        // line 1: the two views as a tab strip — the active one is bracketed and colored.
+        let tab = |text: &str, active: bool| {
+            if active {
+                format!("[{}]", text)
+                    .color(self.selection_color)
+                    .bold()
+                    .to_string()
+            } else {
+                text.to_string()
+            }
+        };
+        println!(
+            "{}   {}",
+            tab("TABS", self.view == View::Tabs),
+            tab("PANES", self.view == View::Panes),
+        );
+
+        // line 2: mode badge + filter
         let badge = match self.mode {
             Mode::Normal => " NORMAL ".black().on_cyan().bold().to_string(),
             Mode::Insert => " INSERT ".black().on_yellow().bold().to_string(),
         };
-        // view breadcrumb: highlight the active one
-        let (tabs, panes) = match self.view {
-            View::Tabs => (
-                "[TABS]".color(self.selection_color).bold().to_string(),
-                "panes".dimmed().to_string(),
-            ),
-            View::Panes => (
-                "tabs".dimmed().to_string(),
-                "[PANES]".color(self.selection_color).bold().to_string(),
-            ),
-        };
-        println!("{}  {} {}", badge, tabs, panes);
-
         let filter = if self.filter.is_empty() {
             "(no filter)".dimmed().italic().to_string()
         } else {
             self.filter.clone()
         };
-        println!("{} {}", ">".cyan().bold(), filter);
+        println!("{} {} {}", badge, ">".cyan().bold(), filter);
         println!();
 
         let rows: Vec<String> = self
@@ -481,26 +486,42 @@ impl State {
 
     /// Renderer using Zellij's native UI components — follows the active theme.
     fn render_native(&self, _rows: usize, _cols: usize) {
+        // row 0: the two views as a tab strip — the active one is bracketed and colored.
+        const TABS: &str = "TABS";
+        const SEP: &str = "   ";
+        const PANES: &str = "PANES";
+        let (strip, range) = match self.view {
+            View::Tabs => {
+                let active = format!("[{}]", TABS);
+                let len = active.chars().count();
+                (format!("{}{}{}", active, SEP, PANES), 0..len)
+            }
+            View::Panes => {
+                let active = format!("[{}]", PANES);
+                let start = TABS.chars().count() + SEP.chars().count();
+                let len = active.chars().count();
+                (format!("{}{}{}", TABS, SEP, active), start..(start + len))
+            }
+        };
+        let strip = Text::new(strip).color_range(2, range);
+        print_text_with_coordinates(strip, 0, 0, None, None);
+
+        // row 1: mode + filter
         let mode = match self.mode {
             Mode::Normal => "NORMAL",
             Mode::Insert => "INSERT",
-        };
-        let view = match self.view {
-            View::Tabs => "TABS",
-            View::Panes => "PANES",
         };
         let filter = if self.filter.is_empty() {
             "(no filter)".to_string()
         } else {
             self.filter.clone()
         };
-        let header = format!("{}  {}  {}", view, mode, filter);
-        let header = Text::new(header).color_range(2, 0..view.chars().count());
-        print_text_with_coordinates(header, 0, 0, None, None);
+        print_text_with_coordinates(Text::new(format!("{}  {}", mode, filter)), 0, 1, None, None);
 
+        // row 3: the list (row 2 left blank)
         let rows = self.current_rows();
         if rows.is_empty() {
-            print_text_with_coordinates(Text::new(self.empty_label()), 0, 2, None, None);
+            print_text_with_coordinates(Text::new(self.empty_label()), 0, 3, None, None);
             return;
         }
         let items: Vec<NestedListItem> = rows
@@ -517,8 +538,8 @@ impl State {
             })
             .collect();
         let count = items.len();
-        print_nested_list_with_coordinates(items, 0, 2, None, None);
-        print_text_with_coordinates(Text::new(self.hint()), 0, 2 + count + 1, None, None);
+        print_nested_list_with_coordinates(items, 0, 3, None, None);
+        print_text_with_coordinates(Text::new(self.hint()), 0, 3 + count + 1, None, None);
     }
 }
 
