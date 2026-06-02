@@ -1,6 +1,6 @@
 # zhop
 
-A modal, **vim-style** fuzzy **tab switcher** plugin for [Zellij](https://zellij.dev).
+A modal, **vim-style** fuzzy **tab switcher** and **floating-pane manager** plugin for [Zellij](https://zellij.dev).
 
 ![zhop in action](assets/demo.gif)
 
@@ -15,7 +15,9 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 |------|------|--------|
 | **NORMAL** (default) | `j` / `k` (or `↓` / `↑`) | move selection |
 | | `g` / `G` | jump to first / last |
-| | `Enter` | switch to the highlighted tab |
+| | `Tab` | toggle **Tabs** ↔ **Panes** view |
+| | `Enter` | act on the highlighted row (see below) |
+| | `x` | *(Panes view)* close the highlighted floating pane |
 | | `/` or `i` | enter INSERT (filter) mode |
 | | `q` / `Esc` / `Ctrl+c` | close |
 | **INSERT** (filter) | any text | append to fuzzy filter |
@@ -23,9 +25,19 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 | | `Ctrl+u` | clear filter |
 | | `↓` / `↑`, `Ctrl+n` / `Ctrl+k` / `Ctrl+p` | move selection |
 | | `Esc` | back to NORMAL (keeps the filter) |
-| | `Enter` | switch to the highlighted tab |
+| | `Enter` | act on the highlighted row |
 
 So you `j/k` to fly around, and only press `/` when you want to search by name.
+
+### Two views — `Tab` switches between them
+
+| View | Lists | `Enter` | `x` |
+|------|-------|---------|-----|
+| **Tabs** (default) | the session's tabs | switch to the tab | — |
+| **Panes** | the current tab's floating panes | focus the pane | close the pane |
+
+The filter and `j`/`k`/`g`/`G` navigation work the same in both views. So zhop is
+both a tab switcher and a quick way to jump between or clean up floating panes.
 
 ## Configuration
 

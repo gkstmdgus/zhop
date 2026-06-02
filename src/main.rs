@@ -23,11 +23,37 @@ enum RenderStyle {
     Native,
 }
 
+/// Which list zhop is showing. `Tab` toggles between them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum View {
+    /// Switch between the session's tabs (the original purpose).
+    Tabs,
+    /// Manage the floating panes on the current tab.
+    Panes,
+}
+
+/// A floating pane on zhop's tab, as shown in the Panes view.
+struct Pane {
+    id: PaneId,
+    title: String,
+    /// Whether this pane is the focused one in the floating layer.
+    focused: bool,
+}
+
 struct State {
+    // ── tabs view ──
     tabs: Vec<TabInfo>,
+    /// Position (0-based) of the highlighted tab.
+    selected_tab: Option<usize>,
+
+    // ── panes view ──
+    /// Floating panes on zhop's tab (excluding zhop itself).
+    panes: Vec<Pane>,
+    /// Id of the highlighted pane.
+    selected_pane: Option<PaneId>,
+
+    view: View,
     filter: String,
-    /// Position (0-based) of the currently highlighted tab.
-    selected: Option<usize>,
     mode: Mode,
 
     // ── config ──
@@ -39,6 +65,9 @@ struct State {
     /// so when set the plugin shrinks its own floating pane to ~this width.
     target_width: Option<usize>,
 
+    /// Our own plugin pane id, so we can exclude ourselves from the pane list.
+    own_plugin_id: u32,
+
     // ── auto-resize bookkeeping ──
     width_settled: bool,
     prev_cols: usize,
@@ -49,14 +78,18 @@ impl Default for State {
     fn default() -> Self {
         Self {
             tabs: Vec::new(),
+            selected_tab: None,
+            panes: Vec::new(),
+            selected_pane: None,
+            view: View::Tabs,
             filter: String::new(),
-            selected: None,
             mode: Mode::Normal,
             ignore_case: true,
             start_in_insert: false,
             selection_color: AnsiColors::Yellow,
             render_style: RenderStyle::Ansi,
             target_width: None,
+            own_plugin_id: 0,
             width_settled: false,
             prev_cols: 0,
             resize_attempts: 0,
@@ -64,80 +97,173 @@ impl Default for State {
     }
 }
 
+/// Move a selection through `keys`, wrapping around. `cur` is the current key.
+fn cycle<T: Copy + PartialEq>(keys: &[T], cur: Option<T>, down: bool) -> Option<T> {
+    if keys.is_empty() {
+        return None;
+    }
+    match cur.and_then(|c| keys.iter().position(|&k| k == c)) {
+        Some(i) => {
+            let n = keys.len();
+            let j = if down { (i + 1) % n } else { (i + n - 1) % n };
+            Some(keys[j])
+        }
+        None => Some(if down { keys[0] } else { *keys.last().unwrap() }),
+    }
+}
+
 impl State {
-    fn matches_filter(&self, tab: &&TabInfo) -> bool {
+    fn matches(&self, name: &str) -> bool {
         if self.filter.is_empty() {
             return true;
         }
         if self.ignore_case {
-            tab.name
-                .to_lowercase()
-                .contains(&self.filter.to_lowercase())
+            name.to_lowercase().contains(&self.filter.to_lowercase())
         } else {
-            tab.name.contains(&self.filter)
+            name.contains(&self.filter)
         }
     }
 
-    fn viewable_tabs_iter(&self) -> impl Iterator<Item = &TabInfo> {
-        self.tabs.iter().filter(|tab| self.matches_filter(tab))
+    fn viewable_tabs(&self) -> impl Iterator<Item = &TabInfo> {
+        self.tabs.iter().filter(|t| self.matches(&t.name))
+    }
+    fn tab_keys(&self) -> Vec<usize> {
+        self.viewable_tabs().map(|t| t.position).collect()
     }
 
-    fn viewable_positions(&self) -> Vec<usize> {
-        self.viewable_tabs_iter().map(|tab| tab.position).collect()
+    fn viewable_panes(&self) -> impl Iterator<Item = &Pane> {
+        self.panes.iter().filter(|p| self.matches(&p.title))
+    }
+    fn pane_keys(&self) -> Vec<PaneId> {
+        self.viewable_panes().map(|p| p.id).collect()
     }
 
-    /// Highlight the first viewable tab (used after the filter changes).
-    fn reset_selection(&mut self) {
-        self.selected = self.viewable_positions().first().copied();
-    }
+    // ── selection (operates on whichever view is active) ──
 
     fn select_first(&mut self) {
-        self.selected = self.viewable_positions().first().copied();
+        match self.view {
+            View::Tabs => self.selected_tab = self.tab_keys().first().copied(),
+            View::Panes => self.selected_pane = self.pane_keys().first().copied(),
+        }
     }
-
     fn select_last(&mut self) {
-        self.selected = self.viewable_positions().last().copied();
+        match self.view {
+            View::Tabs => self.selected_tab = self.tab_keys().last().copied(),
+            View::Panes => self.selected_pane = self.pane_keys().last().copied(),
+        }
     }
-
     fn select_down(&mut self) {
-        let positions = self.viewable_positions();
-        if positions.is_empty() {
-            self.selected = None;
-            return;
-        }
-        match self.selected.and_then(|s| positions.iter().position(|&p| p == s)) {
-            // wrap around to the top after the last entry
-            Some(idx) => self.selected = Some(positions[(idx + 1) % positions.len()]),
-            None => self.selected = Some(positions[0]),
+        match self.view {
+            View::Tabs => self.selected_tab = cycle(&self.tab_keys(), self.selected_tab, true),
+            View::Panes => self.selected_pane = cycle(&self.pane_keys(), self.selected_pane, true),
         }
     }
-
     fn select_up(&mut self) {
-        let positions = self.viewable_positions();
-        if positions.is_empty() {
-            self.selected = None;
-            return;
+        match self.view {
+            View::Tabs => self.selected_tab = cycle(&self.tab_keys(), self.selected_tab, false),
+            View::Panes => self.selected_pane = cycle(&self.pane_keys(), self.selected_pane, false),
         }
-        match self.selected.and_then(|s| positions.iter().position(|&p| p == s)) {
-            // wrap around to the bottom before the first entry
-            Some(idx) => {
-                let len = positions.len();
-                self.selected = Some(positions[(idx + len - 1) % len]);
+    }
+    /// After the filter changes, snap the highlight to the first match.
+    fn reset_selection(&mut self) {
+        self.select_first();
+    }
+
+    /// Switch views (`Tab`), clearing the filter and fixing up the highlight.
+    fn toggle_view(&mut self) {
+        self.view = match self.view {
+            View::Tabs => View::Panes,
+            View::Panes => View::Tabs,
+        };
+        self.filter.clear();
+        match self.view {
+            View::Tabs => {
+                let keys = self.tab_keys();
+                if self.selected_tab.map_or(true, |s| !keys.contains(&s)) {
+                    self.selected_tab = keys.first().copied();
+                }
             }
-            None => self.selected = Some(*positions.last().unwrap()),
+            View::Panes => {
+                let keys = self.pane_keys();
+                if self.selected_pane.map_or(true, |s| !keys.contains(&s)) {
+                    self.selected_pane = keys.first().copied();
+                }
+            }
         }
     }
 
-    /// Switch to the highlighted tab and close the plugin.
+    /// Rebuild the floating-pane list for zhop's tab from a pane manifest.
+    fn refresh_panes(&mut self, manifest: &PaneManifest) {
+        let our_tab = manifest.panes.iter().find_map(|(tab, panes)| {
+            panes
+                .iter()
+                .any(|p| p.is_plugin && p.id == self.own_plugin_id)
+                .then_some(*tab)
+        });
+        self.panes = our_tab
+            .and_then(|t| manifest.panes.get(&t))
+            .map(|panes| {
+                panes
+                    .iter()
+                    // visible floating panes, never ourselves (focus/close only
+                    // work on panes that are actually in the layer)
+                    .filter(|p| {
+                        p.is_floating
+                            && !p.is_suppressed
+                            && !(p.is_plugin && p.id == self.own_plugin_id)
+                    })
+                    .map(|p| Pane {
+                        id: if p.is_plugin {
+                            PaneId::Plugin(p.id)
+                        } else {
+                            PaneId::Terminal(p.id)
+                        },
+                        title: if p.title.trim().is_empty() {
+                            format!("(pane {})", p.id)
+                        } else {
+                            p.title.clone()
+                        },
+                        focused: p.is_focused,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // keep the highlight pointing at a pane that still exists
+        let keys = self.pane_keys();
+        if self.selected_pane.map_or(true, |s| !keys.contains(&s)) {
+            self.selected_pane = keys.first().copied();
+        }
+    }
+
+    /// Act on the highlighted row: switch tab (Tabs) or focus pane (Panes), then close.
     fn confirm(&self) {
-        if let Some(tab) = self
-            .tabs
-            .iter()
-            .find(|tab| Some(tab.position) == self.selected)
-        {
-            close_focus();
-            // Zellij's switch_tab_to is 1-based; TabInfo.position is 0-based.
-            switch_tab_to(tab.position as u32 + 1);
+        match self.view {
+            View::Tabs => {
+                if let Some(tab) = self
+                    .tabs
+                    .iter()
+                    .find(|tab| Some(tab.position) == self.selected_tab)
+                {
+                    close_focus();
+                    // Zellij's switch_tab_to is 1-based; TabInfo.position is 0-based.
+                    switch_tab_to(tab.position as u32 + 1);
+                }
+            }
+            View::Panes => {
+                if let Some(id) = self.selected_pane {
+                    close_focus();
+                    focus_pane_with_id(id, true);
+                }
+            }
+        }
+    }
+
+    /// Close the highlighted floating pane (Panes view). The list refreshes on
+    /// the resulting `PaneUpdate`.
+    fn close_selected_pane(&self) {
+        if let Some(id) = self.selected_pane {
+            close_pane_with_id(id);
         }
     }
 }
@@ -146,12 +272,14 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, mut configuration: BTreeMap<String, String>) {
-        // ReadApplicationState  → receive TabUpdate / Key events
-        // ChangeApplicationState → switch tabs, close the floating pane
+        // ReadApplicationState  → receive TabUpdate / PaneUpdate / Key events
+        // ChangeApplicationState → switch tabs, focus/close panes, close ourselves
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
         ]);
+
+        self.own_plugin_id = get_plugin_ids().plugin_id;
 
         if let Some(v) = configuration.remove("ignore_case") {
             self.ignore_case = v.trim().parse().unwrap_or(true);
@@ -178,20 +306,23 @@ impl ZellijPlugin for State {
             Mode::Normal
         };
 
-        subscribe(&[EventType::TabUpdate, EventType::Key]);
+        subscribe(&[EventType::TabUpdate, EventType::PaneUpdate, EventType::Key]);
     }
 
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::TabUpdate(tabs) => {
                 // Default the highlight to the currently active tab.
-                if self.selected.is_none() {
-                    self.selected = tabs
-                        .iter()
-                        .find_map(|t| t.active.then_some(t.position));
+                if self.selected_tab.is_none() {
+                    self.selected_tab = tabs.iter().find_map(|t| t.active.then_some(t.position));
                 }
                 self.tabs = tabs;
                 true
+            }
+            Event::PaneUpdate(manifest) => {
+                self.refresh_panes(&manifest);
+                // only the Panes view depends on this
+                matches!(self.view, View::Panes)
             }
             Event::Key(key) => match self.mode {
                 Mode::Normal => self.handle_normal_key(key),
@@ -216,7 +347,9 @@ impl State {
     /// relative resize step per frame) until we reach it. Each resize triggers
     /// a re-render, so this converges over a few frames and then settles.
     fn autoresize_width(&mut self, cols: usize) {
-        let Some(target) = self.target_width else { return };
+        let Some(target) = self.target_width else {
+            return;
+        };
         if self.width_settled {
             return;
         }
@@ -241,43 +374,93 @@ impl State {
     }
 }
 
+/// One rendered row, independent of the renderer.
+struct Row {
+    label: String,
+    selected: bool,
+    /// active tab / focused pane — emphasized.
+    marked: bool,
+}
+
 impl State {
+    fn current_rows(&self) -> Vec<Row> {
+        match self.view {
+            View::Tabs => self
+                .viewable_tabs()
+                .map(|t| Row {
+                    label: format!("{} {}", t.position + 1, t.name),
+                    selected: self.selected_tab == Some(t.position),
+                    marked: t.active,
+                })
+                .collect(),
+            View::Panes => self
+                .viewable_panes()
+                .map(|p| Row {
+                    label: p.title.clone(),
+                    selected: self.selected_pane == Some(p.id),
+                    marked: p.focused,
+                })
+                .collect(),
+        }
+    }
+
+    fn empty_label(&self) -> &'static str {
+        match self.view {
+            View::Tabs => "no matching tabs",
+            View::Panes if self.filter.is_empty() => "no floating panes on this tab",
+            View::Panes => "no matching panes",
+        }
+    }
+
+    fn hint(&self) -> &'static str {
+        match (self.mode, self.view) {
+            (Mode::Insert, _) => "type to filter · esc normal · enter select",
+            (Mode::Normal, View::Tabs) => "j/k move · / filter · enter open · tab→panes · q quit",
+            (Mode::Normal, View::Panes) => "j/k move · enter focus · x close · tab→tabs · q quit",
+        }
+    }
+
     /// Self-drawn renderer using raw ANSI escapes (owo-colors).
     fn render_ansi(&self, _rows: usize, _cols: usize) {
-        let (badge, hint) = match self.mode {
-            Mode::Normal => (
-                " NORMAL ".black().on_cyan().bold().to_string(),
-                "j/k move · / filter · enter open · q quit".dimmed().to_string(),
+        let badge = match self.mode {
+            Mode::Normal => " NORMAL ".black().on_cyan().bold().to_string(),
+            Mode::Insert => " INSERT ".black().on_yellow().bold().to_string(),
+        };
+        // view breadcrumb: highlight the active one
+        let (tabs, panes) = match self.view {
+            View::Tabs => (
+                "[TABS]".color(self.selection_color).bold().to_string(),
+                "panes".dimmed().to_string(),
             ),
-            Mode::Insert => (
-                " INSERT ".black().on_yellow().bold().to_string(),
-                "type to filter · esc normal · enter open".dimmed().to_string(),
+            View::Panes => (
+                "tabs".dimmed().to_string(),
+                "[PANES]".color(self.selection_color).bold().to_string(),
             ),
         };
+        println!("{}  {} {}", badge, tabs, panes);
 
         let filter = if self.filter.is_empty() {
             "(no filter)".dimmed().italic().to_string()
         } else {
             self.filter.clone()
         };
-        println!("{} {} {}", badge, ">".cyan().bold(), filter);
+        println!("{} {}", ">".cyan().bold(), filter);
         println!();
 
         let rows: Vec<String> = self
-            .viewable_tabs_iter()
-            .map(|tab| {
-                let is_selected = self.selected == Some(tab.position);
-                let pointer = if is_selected {
+            .current_rows()
+            .iter()
+            .map(|r| {
+                let pointer = if r.selected {
                     "›".color(self.selection_color).bold().to_string()
                 } else {
                     " ".to_string()
                 };
-                let mut name = tab.name.clone();
-                if tab.active {
-                    name = name.underline().to_string();
+                let mut label = r.label.clone();
+                if r.marked {
+                    label = label.underline().to_string();
                 }
-                let label = format!("{} {}", tab.position + 1, name);
-                let label = if is_selected {
+                let label = if r.selected {
                     label.color(self.selection_color).bold().to_string()
                 } else {
                     label
@@ -287,59 +470,55 @@ impl State {
             .collect();
 
         if rows.is_empty() {
-            println!("{}", "  no matching tabs".dimmed().italic());
+            println!("{}", format!("  {}", self.empty_label()).dimmed().italic());
         } else {
             println!("{}", rows.join("\n"));
         }
 
         println!();
-        println!("{}", hint);
+        println!("{}", self.hint().dimmed());
     }
 
     /// Renderer using Zellij's native UI components — follows the active theme.
     fn render_native(&self, _rows: usize, _cols: usize) {
-        // header: mode word (themed) + current filter
         let mode = match self.mode {
             Mode::Normal => "NORMAL",
             Mode::Insert => "INSERT",
+        };
+        let view = match self.view {
+            View::Tabs => "TABS",
+            View::Panes => "PANES",
         };
         let filter = if self.filter.is_empty() {
             "(no filter)".to_string()
         } else {
             self.filter.clone()
         };
-        let header = format!("{}  {}", mode, filter);
-        let header = Text::new(header).color_range(2, 0..mode.chars().count());
+        let header = format!("{}  {}  {}", view, mode, filter);
+        let header = Text::new(header).color_range(2, 0..view.chars().count());
         print_text_with_coordinates(header, 0, 0, None, None);
 
-        // tab list — `.selected()` and active coloring use the theme palette
-        let items: Vec<NestedListItem> = self
-            .viewable_tabs_iter()
-            .map(|tab| {
-                let label = format!("{}  {}", tab.position + 1, tab.name);
-                let mut item = NestedListItem::new(label);
-                if tab.active {
+        let rows = self.current_rows();
+        if rows.is_empty() {
+            print_text_with_coordinates(Text::new(self.empty_label()), 0, 2, None, None);
+            return;
+        }
+        let items: Vec<NestedListItem> = rows
+            .iter()
+            .map(|r| {
+                let mut item = NestedListItem::new(r.label.clone());
+                if r.marked {
                     item = item.color_range(0, ..);
                 }
-                if self.selected == Some(tab.position) {
+                if r.selected {
                     item = item.selected();
                 }
                 item
             })
             .collect();
-
-        if items.is_empty() {
-            print_text_with_coordinates(Text::new("no matching tabs"), 0, 2, None, None);
-            return;
-        }
         let count = items.len();
         print_nested_list_with_coordinates(items, 0, 2, None, None);
-
-        let hint = match self.mode {
-            Mode::Normal => "j/k move · / filter · enter open · q quit",
-            Mode::Insert => "type to filter · esc normal · enter open",
-        };
-        print_text_with_coordinates(Text::new(hint), 0, 2 + count + 1, None, None);
+        print_text_with_coordinates(Text::new(self.hint()), 0, 2 + count + 1, None, None);
     }
 }
 
@@ -361,6 +540,18 @@ impl State {
             BareKey::Enter => {
                 self.confirm();
                 false
+            }
+
+            // toggle Tabs ↔ Panes
+            BareKey::Tab => {
+                self.toggle_view();
+                true
+            }
+
+            // close the highlighted floating pane (Panes view only)
+            BareKey::Char('x') if key.has_no_modifiers() && self.view == View::Panes => {
+                self.close_selected_pane();
+                true
             }
 
             // enter filter mode
