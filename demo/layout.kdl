@@ -1,4 +1,6 @@
-// Demo session: a tab bar plus five named tabs to switch between.
+// Demo session: a tab bar plus prefixed tabs across a few categories
+// (dev / ops / web) with a couple of ungrouped ones, to show grouping,
+// flattening, filtering, and index-jump.
 layout {
     default_tab_template {
         pane size=1 borderless=true {
@@ -6,9 +8,14 @@ layout {
         }
         children
     }
-    tab name="editor"
-    tab name="server"
-    tab name="logs"
-    tab name="git"
+    tab name="dev:editor"
+    tab name="dev:server"
+    tab name="dev:db"
+    tab name="ops:logs"
+    tab name="ops:deploy"
+    tab name="ops:metrics"
+    tab name="web:docs"
+    tab name="web:api"
     tab name="notes"
+    tab name="scratch"
 }
