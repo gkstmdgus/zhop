@@ -2,7 +2,7 @@
 
 A modal, **vim-style** fuzzy **tab switcher** plugin for [Zellij](https://zellij.dev).
 
-![zhop in action](assets/demo.gif)
+![zhop in action](assets/demo.gif?v=2)
 
 `Ctrl+y` opens a floating switcher where you `j`/`k` to move, `/` to filter by
 name, type an index number to jump straight to a tab, and `Enter` to switch.
