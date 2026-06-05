@@ -1,6 +1,6 @@
 [package]
 name = "zhop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Teo Han <teo.han@narnia.ai>"]
 description = "A modal (vim-style) fuzzy tab switcher plugin for Zellij"

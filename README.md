@@ -105,12 +105,12 @@ Requires the `wasm32-wasip1` target: `rustup target add wasm32-wasip1`.
 ### Option A — load directly from a release (no build)
 
 Zellij can load a plugin straight from an HTTPS URL and caches it locally. Pin a
-version by pointing at a release asset (replace `v0.1.0` with the tag you want):
+version by pointing at a release asset (replace `v0.2.0` with the tag you want):
 
 ```kdl
 shared_except "locked" {
     bind "Ctrl y" {
-        LaunchOrFocusPlugin "https://github.com/gkstmdgus/zhop/releases/download/v0.1.0/zhop.wasm" {
+        LaunchOrFocusPlugin "https://github.com/gkstmdgus/zhop/releases/download/v0.2.0/zhop.wasm" {
             floating true
             ignore_case true
         }
