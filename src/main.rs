@@ -1,4 +1,3 @@
-use owo_colors::{AnsiColors, OwoColorize};
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 use zellij_tile::ui_components::{
@@ -14,15 +13,6 @@ enum Mode {
     Insert,
 }
 
-/// How the plugin draws itself.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RenderStyle {
-    /// Self-drawn with raw ANSI (owo-colors). Full control, fixed palette.
-    Ansi,
-    /// Zellij's native UI components — follows the active theme.
-    Native,
-}
-
 struct State {
     tabs: Vec<TabInfo>,
     filter: String,
@@ -33,8 +23,6 @@ struct State {
     // ── config ──
     ignore_case: bool,
     start_in_insert: bool,
-    selection_color: AnsiColors,
-    render_style: RenderStyle,
     /// Target width in columns. `LaunchOrFocusPlugin` can't size a plugin pane,
     /// so when set the plugin shrinks its own floating pane to ~this width.
     target_width: Option<usize>,
@@ -59,8 +47,6 @@ impl Default for State {
             mode: Mode::Normal,
             ignore_case: true,
             start_in_insert: false,
-            selection_color: AnsiColors::Yellow,
-            render_style: RenderStyle::Ansi,
             target_width: None,
             group_by_prefix: true,
             group_delimiter: ":".to_string(),
@@ -201,15 +187,6 @@ impl ZellijPlugin for State {
         if let Some(v) = configuration.remove("start_in_insert") {
             self.start_in_insert = v.trim().parse().unwrap_or(false);
         }
-        if let Some(c) = configuration.remove("selection_color") {
-            self.selection_color = c.trim().into();
-        }
-        if let Some(v) = configuration.remove("ui") {
-            self.render_style = match v.trim().to_lowercase().as_str() {
-                "native" => RenderStyle::Native,
-                _ => RenderStyle::Ansi,
-            };
-        }
         if let Some(v) = configuration.remove("width") {
             self.target_width = v.trim().parse::<usize>().ok().filter(|w| *w > 0);
         }
@@ -253,10 +230,7 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        match self.render_style {
-            RenderStyle::Ansi => self.render_ansi(rows, cols),
-            RenderStyle::Native => self.render_native(rows, cols),
-        }
+        self.render_native(rows, cols);
         self.autoresize_width(cols);
     }
 }
@@ -293,64 +267,6 @@ impl State {
 }
 
 impl State {
-    /// Self-drawn renderer using raw ANSI escapes (owo-colors).
-    fn render_ansi(&self, _rows: usize, _cols: usize) {
-        let (badge, hint) = match self.mode {
-            Mode::Normal => (
-                " NORMAL ".black().on_cyan().bold().to_string(),
-                "j/k move · / filter · enter open · q quit".dimmed().to_string(),
-            ),
-            Mode::Insert => (
-                " INSERT ".black().on_yellow().bold().to_string(),
-                "type to filter · esc normal · enter open".dimmed().to_string(),
-            ),
-        };
-
-        let filter = if self.filter.is_empty() {
-            "(no filter)".dimmed().italic().to_string()
-        } else {
-            self.filter.clone()
-        };
-        println!("{} {} {}", badge, ">".cyan().bold(), filter);
-        println!();
-
-        let mut rows: Vec<String> = Vec::new();
-        for (category, tabs) in self.display_groups() {
-            if let Some(category) = category {
-                rows.push(format!("{}", category.magenta().bold()));
-            }
-            let indent = if category.is_some() { "  " } else { "" };
-            for tab in tabs {
-                let is_selected = self.selected == Some(tab.position);
-                let pointer = if is_selected {
-                    "›".color(self.selection_color).bold().to_string()
-                } else {
-                    " ".to_string()
-                };
-                let mut name = self.split_tab(&tab.name).1.to_string();
-                if tab.active {
-                    name = name.underline().to_string();
-                }
-                let label = format!("{} {}", tab.position + 1, name);
-                let label = if is_selected {
-                    label.color(self.selection_color).bold().to_string()
-                } else {
-                    label
-                };
-                rows.push(format!("{}{} {}", indent, pointer, label));
-            }
-        }
-
-        if rows.is_empty() {
-            println!("{}", "  no matching tabs".dimmed().italic());
-        } else {
-            println!("{}", rows.join("\n"));
-        }
-
-        println!();
-        println!("{}", hint);
-    }
-
     /// Renderer using Zellij's native UI components — follows the active theme.
     fn render_native(&self, _rows: usize, _cols: usize) {
         // header: mode word (themed) + current filter

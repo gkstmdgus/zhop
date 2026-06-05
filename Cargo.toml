@@ -13,7 +13,6 @@ publish = false
 # Pinned to 0.41 to stay compatible with Zellij 0.43.x (wasmtime runtime).
 # Zellij 0.44 switched the WASM runtime to WASMI and bumped zellij-tile to 0.44.
 zellij-tile = "0.41"
-owo-colors = "3"
 
 [profile.release]
 opt-level = "z"

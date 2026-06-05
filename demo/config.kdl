@@ -6,7 +6,6 @@ keybinds clear-defaults=true {
             LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zhop.wasm" {
                 floating true
                 ignore_case true
-                ui "native"
             }
         }
         bind "Ctrl q" { Quit; }

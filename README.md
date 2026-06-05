@@ -35,10 +35,11 @@ Passed via the keybinding block (all optional):
 |-----|---------|-------------|
 | `ignore_case` | `true` | case-insensitive filtering |
 | `start_in_insert` | `false` | open directly in filter mode |
-| `selection_color` | `yellow` | accent color for the highlighted row (ANSI renderer only) |
-| `ui` | `ansi` | renderer: `ansi` (self-drawn, fixed palette) or `native` (Zellij UI components, follows the active theme) |
 | `group_by_prefix` | `true` | group tabs by a category prefix (see [Grouping](#grouping)) |
 | `group_delimiter` | `:` | separator between the category prefix and the tab name |
+
+The switcher renders with Zellij's native UI components, so the selection
+highlight and accent colors follow your active theme automatically.
 
 ### Grouping
 
@@ -65,15 +66,6 @@ Tabs without a usable prefix (no delimiter, or nothing on either side of it) sta
 ungrouped. Filtering still matches against the full tab name, and `j`/`k` navigation
 follows the on-screen order. Set `group_by_prefix false` to show a flat list, or
 change `group_delimiter` (e.g. `"/"`) to group on a different separator.
-
-### Renderers
-
-- `ui "ansi"` (default) — draws rows with raw ANSI via owo-colors. Full control,
-  but colors are fixed and don't follow your Zellij theme.
-- `ui "native"` — uses Zellij's built-in `Text` / `NestedListItem` UI components,
-  the same primitives the built-in plugins (session-manager, strider) use. The
-  selection highlight and accents automatically match the active theme. The
-  `selection_color` option is ignored in this mode.
 
 ## Compatibility
 
@@ -102,7 +94,6 @@ shared_except "locked" {
         LaunchOrFocusPlugin "https://github.com/gkstmdgus/zhop/releases/download/v0.1.0/zhop.wasm" {
             floating true
             ignore_case true
-            // ui "native"   // uncomment to use the theme-aware renderer
         }
     }
 }
@@ -123,7 +114,6 @@ shared_except "locked" {
         LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zhop.wasm" {
             floating true
             ignore_case true
-            // ui "native"   // uncomment to use the theme-aware renderer
         }
     }
 }
