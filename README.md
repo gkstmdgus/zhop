@@ -37,6 +37,34 @@ Passed via the keybinding block (all optional):
 | `start_in_insert` | `false` | open directly in filter mode |
 | `selection_color` | `yellow` | accent color for the highlighted row (ANSI renderer only) |
 | `ui` | `ansi` | renderer: `ansi` (self-drawn, fixed palette) or `native` (Zellij UI components, follows the active theme) |
+| `group_by_prefix` | `true` | group tabs by a category prefix (see [Grouping](#grouping)) |
+| `group_delimiter` | `:` | separator between the category prefix and the tab name |
+
+### Grouping
+
+When `group_by_prefix` is on (the default), a tab named like `category<delimiter>name`
+is shown under a category header with the prefix stripped from the row. For example,
+with the default `:` delimiter, the tabs:
+
+```
+work:server   work:db   web:docs   scratch
+```
+
+render as:
+
+```
+work
+   server
+   db
+web
+   docs
+scratch
+```
+
+Tabs without a usable prefix (no delimiter, or nothing on either side of it) stay
+ungrouped. Filtering still matches against the full tab name, and `j`/`k` navigation
+follows the on-screen order. Set `group_by_prefix false` to show a flat list, or
+change `group_delimiter` (e.g. `"/"`) to group on a different separator.
 
 ### Renderers
 

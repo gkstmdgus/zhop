@@ -38,6 +38,11 @@ struct State {
     /// Target width in columns. `LaunchOrFocusPlugin` can't size a plugin pane,
     /// so when set the plugin shrinks its own floating pane to ~this width.
     target_width: Option<usize>,
+    /// When true, tabs whose name starts with `<category><delimiter>` are
+    /// grouped under a category header (with the prefix stripped from the row).
+    group_by_prefix: bool,
+    /// Separator between the category prefix and the tab name (default `:`).
+    group_delimiter: String,
 
     // ── auto-resize bookkeeping ──
     width_settled: bool,
@@ -57,6 +62,8 @@ impl Default for State {
             selection_color: AnsiColors::Yellow,
             render_style: RenderStyle::Ansi,
             target_width: None,
+            group_by_prefix: true,
+            group_delimiter: ":".to_string(),
             width_settled: false,
             prev_cols: 0,
             resize_attempts: 0,
@@ -82,8 +89,43 @@ impl State {
         self.tabs.iter().filter(|tab| self.matches_filter(tab))
     }
 
+    /// Split a tab name into `(category, display_name)`. The category is the part
+    /// before the first `group_delimiter`; the display name is what's left with the
+    /// prefix stripped. Returns `(None, name)` when grouping is off or there's no
+    /// usable prefix (empty category or nothing after the delimiter).
+    fn split_tab<'a>(&self, name: &'a str) -> (Option<&'a str>, &'a str) {
+        if self.group_by_prefix {
+            if let Some((cat, rest)) = name.split_once(self.group_delimiter.as_str()) {
+                let rest = rest.trim_start();
+                if !cat.is_empty() && !rest.is_empty() {
+                    return (Some(cat), rest);
+                }
+            }
+        }
+        (None, name)
+    }
+
+    /// Viewable tabs bucketed into categories, preserving first-appearance order
+    /// of both categories and tabs. Ungrouped tabs share a single `None` bucket.
+    /// This is the on-screen order, so navigation and rendering stay in sync.
+    fn display_groups(&self) -> Vec<(Option<&str>, Vec<&TabInfo>)> {
+        let mut groups: Vec<(Option<&str>, Vec<&TabInfo>)> = Vec::new();
+        for tab in self.viewable_tabs_iter() {
+            let key = self.split_tab(&tab.name).0;
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, bucket)) => bucket.push(tab),
+                None => groups.push((key, vec![tab])),
+            }
+        }
+        groups
+    }
+
+    /// Tab positions in on-screen order (grouped when enabled). Drives navigation.
     fn viewable_positions(&self) -> Vec<usize> {
-        self.viewable_tabs_iter().map(|tab| tab.position).collect()
+        self.display_groups()
+            .into_iter()
+            .flat_map(|(_, bucket)| bucket.into_iter().map(|tab| tab.position))
+            .collect()
     }
 
     /// Highlight the first viewable tab (used after the filter changes).
@@ -170,6 +212,15 @@ impl ZellijPlugin for State {
         }
         if let Some(v) = configuration.remove("width") {
             self.target_width = v.trim().parse::<usize>().ok().filter(|w| *w > 0);
+        }
+        if let Some(v) = configuration.remove("group_by_prefix") {
+            self.group_by_prefix = v.trim().parse().unwrap_or(true);
+        }
+        if let Some(v) = configuration.remove("group_delimiter") {
+            // an empty delimiter would split nothing — ignore it and keep the default
+            if !v.is_empty() {
+                self.group_delimiter = v;
+            }
         }
 
         self.mode = if self.start_in_insert {
@@ -263,16 +314,20 @@ impl State {
         println!("{} {} {}", badge, ">".cyan().bold(), filter);
         println!();
 
-        let rows: Vec<String> = self
-            .viewable_tabs_iter()
-            .map(|tab| {
+        let mut rows: Vec<String> = Vec::new();
+        for (category, tabs) in self.display_groups() {
+            if let Some(category) = category {
+                rows.push(format!("{}", category.magenta().bold()));
+            }
+            let indent = if category.is_some() { "  " } else { "" };
+            for tab in tabs {
                 let is_selected = self.selected == Some(tab.position);
                 let pointer = if is_selected {
                     "›".color(self.selection_color).bold().to_string()
                 } else {
                     " ".to_string()
                 };
-                let mut name = tab.name.clone();
+                let mut name = self.split_tab(&tab.name).1.to_string();
                 if tab.active {
                     name = name.underline().to_string();
                 }
@@ -282,9 +337,9 @@ impl State {
                 } else {
                     label
                 };
-                format!("{} {}", pointer, label)
-            })
-            .collect();
+                rows.push(format!("{}{} {}", indent, pointer, label));
+            }
+        }
 
         if rows.is_empty() {
             println!("{}", "  no matching tabs".dimmed().italic());
@@ -312,21 +367,29 @@ impl State {
         let header = Text::new(header).color_range(2, 0..mode.chars().count());
         print_text_with_coordinates(header, 0, 0, None, None);
 
-        // tab list — `.selected()` and active coloring use the theme palette
-        let items: Vec<NestedListItem> = self
-            .viewable_tabs_iter()
-            .map(|tab| {
-                let label = format!("{}  {}", tab.position + 1, tab.name);
+        // tab list — `.selected()` and active coloring use the theme palette.
+        // Categories become indent-0 headers; their tabs sit at indent 1.
+        let mut items: Vec<NestedListItem> = Vec::new();
+        for (category, tabs) in self.display_groups() {
+            if let Some(category) = category {
+                let header = NestedListItem::new(category.to_string()).color_range(2, ..);
+                items.push(header);
+            }
+            for tab in tabs {
+                let label = format!("{}  {}", tab.position + 1, self.split_tab(&tab.name).1);
                 let mut item = NestedListItem::new(label);
+                if category.is_some() {
+                    item = item.indent(1);
+                }
                 if tab.active {
                     item = item.color_range(0, ..);
                 }
                 if self.selected == Some(tab.position) {
                     item = item.selected();
                 }
-                item
-            })
-            .collect();
+                items.push(item);
+            }
+        }
 
         if items.is_empty() {
             print_text_with_coordinates(Text::new("no matching tabs"), 0, 2, None, None);
