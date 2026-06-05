@@ -19,6 +19,11 @@ struct State {
     /// Position (0-based) of the currently highlighted tab.
     selected: Option<usize>,
     mode: Mode,
+    /// Digits typed in Normal mode to quick-jump by the 1-based tab index.
+    /// Empty when no jump is in progress.
+    jump_buffer: String,
+    /// Transient message (e.g. a bad jump index), shown until the next keypress.
+    warning: Option<String>,
 
     // ── config ──
     ignore_case: bool,
@@ -45,6 +50,8 @@ impl Default for State {
             filter: String::new(),
             selected: None,
             mode: Mode::Normal,
+            jump_buffer: String::new(),
+            warning: None,
             ignore_case: true,
             start_in_insert: false,
             target_width: None,
@@ -161,6 +168,54 @@ impl State {
     /// only reorders the same viewable tabs, so the selection is preserved.
     fn toggle_grouping(&mut self) {
         self.group_by_prefix = !self.group_by_prefix;
+    }
+
+    /// Viewable tabs (by position) whose 1-based index string starts with the
+    /// current jump buffer. Only meaningful while the buffer is non-empty.
+    fn jump_candidates(&self) -> Vec<usize> {
+        self.viewable_tabs_iter()
+            .map(|tab| tab.position)
+            .filter(|p| (p + 1).to_string().starts_with(self.jump_buffer.as_str()))
+            .collect()
+    }
+
+    /// Handle a digit pressed in Normal mode: extend the numeric jump buffer and
+    /// move the highlight to the matching tab. Any number can be typed; the jump
+    /// (and any "no such tab" warning) happens on `Enter` via `jump_to_buffer`.
+    /// Returns `true` to keep the plugin open.
+    fn push_jump_digit(&mut self, digit: char) -> bool {
+        self.jump_buffer.push(digit);
+        let candidates = self.jump_candidates();
+        // highlight the exact match if there is one, else the first tab whose
+        // index still starts with what's been typed (none → no highlight)
+        let exact = candidates
+            .iter()
+            .find(|&&p| (p + 1).to_string() == self.jump_buffer)
+            .copied();
+        self.selected = exact.or_else(|| candidates.first().copied());
+        true
+    }
+
+    /// On `Enter` with a pending jump number: switch to that tab if its index
+    /// exists among the viewable tabs, otherwise show a warning and stay open.
+    /// Returns whether to keep the plugin open.
+    fn jump_to_buffer(&mut self) -> bool {
+        let target = self
+            .viewable_tabs_iter()
+            .find(|tab| (tab.position + 1).to_string() == self.jump_buffer)
+            .map(|tab| tab.position);
+        match target {
+            Some(pos) => {
+                self.jump_buffer.clear();
+                close_focus();
+                switch_tab_to(pos as u32 + 1);
+                false
+            }
+            None => {
+                self.warning = Some(format!("no tab #{}", self.jump_buffer));
+                true
+            }
+        }
     }
 
     /// Switch to the highlighted tab and close the plugin.
@@ -286,7 +341,10 @@ impl State {
         } else {
             self.filter.clone()
         };
-        let header = format!("{}  {}", mode, filter);
+        let mut header = format!("{}  {}", mode, filter);
+        if !self.jump_buffer.is_empty() {
+            header.push_str(&format!("  #{}", self.jump_buffer));
+        }
         let header = Text::new(header).color_range(2, 0..mode.chars().count());
         print_text_with_coordinates(header, 0, 0, None, None);
 
@@ -321,16 +379,53 @@ impl State {
         let count = items.len();
         print_nested_list_with_coordinates(items, 0, 2, None, None);
 
+        let mut y = 2 + count + 1;
+        if let Some(warning) = &self.warning {
+            let line = Text::new(warning.clone()).color_range(3, ..);
+            print_text_with_coordinates(line, 0, y, None, None);
+            y += 1;
+        }
+
         let hint = match self.mode {
-            Mode::Normal => "j/k move · / filter · tab group · enter open · q quit",
+            Mode::Normal => "j/k move · type # · / filter · tab group · enter go · q quit",
             Mode::Insert => "type to filter · esc normal · tab group · enter open",
         };
-        print_text_with_coordinates(Text::new(hint), 0, 2 + count + 1, None, None);
+        print_text_with_coordinates(Text::new(hint), 0, y, None, None);
     }
 }
 
 impl State {
     fn handle_normal_key(&mut self, key: KeyWithModifier) -> bool {
+        // any keypress dismisses a transient warning (a failed Enter re-sets it)
+        self.warning = None;
+
+        // numeric quick-jump: digits build a 1-based index buffer; the jump
+        // happens on Enter (see `push_jump_digit` / `jump_to_buffer`).
+        if let BareKey::Char(c) = key.bare_key {
+            if c.is_ascii_digit() && key.has_no_modifiers() {
+                return self.push_jump_digit(c);
+            }
+        }
+        // while a jump number is in progress: Enter jumps (or warns), Backspace
+        // edits it, Esc cancels it, anything else abandons it and falls through
+        if !self.jump_buffer.is_empty() {
+            match key.bare_key {
+                BareKey::Enter => return self.jump_to_buffer(),
+                BareKey::Backspace => {
+                    self.jump_buffer.pop();
+                    if !self.jump_buffer.is_empty() {
+                        self.selected = self.jump_candidates().first().copied().or(self.selected);
+                    }
+                    return true;
+                }
+                BareKey::Esc => {
+                    self.jump_buffer.clear();
+                    return true;
+                }
+                _ => self.jump_buffer.clear(),
+            }
+        }
+
         match key.bare_key {
             BareKey::Esc => {
                 close_focus();

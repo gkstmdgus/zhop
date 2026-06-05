@@ -15,6 +15,7 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 |------|------|--------|
 | **NORMAL** (default) | `j` / `k` (or `↓` / `↑`) | move selection |
 | | `g` / `G` | jump to first / last |
+| | `0`–`9` | type a tab's index number to select it (then `Enter` to jump) |
 | | `Tab` | toggle grouped / flat view |
 | | `Enter` | switch to the highlighted tab |
 | | `/` or `i` | enter INSERT (filter) mode |
@@ -28,6 +29,12 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 | | `Enter` | switch to the highlighted tab |
 
 So you `j/k` to fly around, and only press `/` when you want to search by name.
+
+Each row shows the tab's index number; in NORMAL mode type it to select that tab,
+then press `Enter` to jump there. Digits accumulate (e.g. `1` then `2` → tab 12), so
+the number is never ambiguous. The pending number shows as `#…` in the header;
+`Backspace` edits it and `Esc` cancels it. Pressing `Enter` on an index that doesn't
+exist shows a brief warning instead of jumping.
 
 ## Configuration
 
