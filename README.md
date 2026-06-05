@@ -4,8 +4,15 @@ A modal, **vim-style** fuzzy **tab switcher** plugin for [Zellij](https://zellij
 
 ![zhop in action](assets/demo.gif)
 
-`Ctrl+y` opens the floating switcher; `j`/`k` to move, `/` to filter by name,
-`Enter` to jump to the tab.
+`Ctrl+y` opens a floating switcher where you `j`/`k` to move, `/` to filter by
+name, type an index number to jump straight to a tab, and `Enter` to switch.
+Tabs that share a `category:` prefix are grouped under collapsible headers, and
+`Tab` toggles between the grouped and flat views.
+
+- **Modal, vim-style** — `j`/`k` move without typing into a filter; `/` only when you want to search.
+- **Category grouping** — name tabs `dev:server`, `web:docs`, … and zhop buckets them under `dev` / `web` headers (prefix stripped). `Tab` flattens it back.
+- **Index jump** — every row shows its tab number; type it and press `Enter` to go straight there.
+- **Theme-aware** — drawn with Zellij's native UI, so colors follow your active theme.
 
 Most Zellij tab pickers (e.g. [room](https://github.com/rvcas/room)) are
 type-to-filter: every keystroke goes into the filter, so you can't use bare

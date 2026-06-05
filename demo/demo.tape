@@ -6,7 +6,7 @@ Output assets/demo.gif
 Set Shell "bash"
 Set FontSize 18
 Set Width 1200
-Set Height 700
+Set Height 1120
 Set Padding 16
 Set Theme "Catppuccin Mocha"
 
@@ -22,36 +22,39 @@ Type "zellij -s zhop-demo --config demo/config.kdl -n demo/layout.kdl"
 Enter
 Sleep 3500ms
 
-# open zhop (only zhop shows, default floating size)
+# open zhop — tabs are grouped by their category prefix (dev / ops / web)
 Ctrl+y
-Sleep 2s
+Sleep 2200ms
+
+# Tab toggles to a flat list…
+Tab
+Sleep 1600ms
+# …and back to the grouped view
+Tab
+Sleep 1600ms
 
 # NORMAL mode: j/k fly around with no typing
 Type "j"
-Sleep 500ms
+Sleep 400ms
 Type "j"
-Sleep 500ms
+Sleep 400ms
 Type "j"
-Sleep 600ms
-Type "k"
-Sleep 800ms
+Sleep 700ms
 
-# / to filter by name
+# / to filter by name — narrows to ops:metrics, Enter jumps to it
 Type "/"
-Sleep 500ms
-Type "lo"
-Sleep 1s
-
-# enter switches to the highlighted tab (logs)
+Sleep 400ms
+Type "metr"
+Sleep 1100ms
 Enter
 Sleep 1800ms
 
-# do it again: jump straight to "git"
+# reopen and jump straight by index number: type 1 then 0 → tab #10, Enter
 Ctrl+y
-Sleep 1200ms
-Type "/"
-Sleep 300ms
-Type "git"
+Sleep 1500ms
+Type "1"
+Sleep 700ms
+Type "0"
 Sleep 900ms
 Enter
-Sleep 2s
+Sleep 2000ms
