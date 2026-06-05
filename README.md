@@ -15,6 +15,7 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 |------|------|--------|
 | **NORMAL** (default) | `j` / `k` (or `↓` / `↑`) | move selection |
 | | `g` / `G` | jump to first / last |
+| | `Tab` | toggle grouped / flat view |
 | | `Enter` | switch to the highlighted tab |
 | | `/` or `i` | enter INSERT (filter) mode |
 | | `q` / `Esc` / `Ctrl+c` | close |
@@ -22,6 +23,7 @@ type-to-filter: every keystroke goes into the filter, so you can't use bare
 | | `Backspace` | delete one char |
 | | `Ctrl+u` | clear filter |
 | | `↓` / `↑`, `Ctrl+n` / `Ctrl+k` / `Ctrl+p` | move selection |
+| | `Tab` | toggle grouped / flat view |
 | | `Esc` | back to NORMAL (keeps the filter) |
 | | `Enter` | switch to the highlighted tab |
 
@@ -64,8 +66,11 @@ scratch
 
 Tabs without a usable prefix (no delimiter, or nothing on either side of it) stay
 ungrouped. Filtering still matches against the full tab name, and `j`/`k` navigation
-follows the on-screen order. Set `group_by_prefix false` to show a flat list, or
-change `group_delimiter` (e.g. `"/"`) to group on a different separator.
+follows the on-screen order.
+
+Press `Tab` inside the switcher to toggle between the grouped and flat views on the
+fly. `group_by_prefix` only sets the initial state; set it to `false` to open flat.
+Change `group_delimiter` (e.g. `"/"`) to group on a different separator.
 
 ## Compatibility
 

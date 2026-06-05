@@ -156,6 +156,13 @@ impl State {
         }
     }
 
+    /// Flip between the grouped (category headers) and flat tab views.
+    /// The highlight is a tab position, which stays valid either way — grouping
+    /// only reorders the same viewable tabs, so the selection is preserved.
+    fn toggle_grouping(&mut self) {
+        self.group_by_prefix = !self.group_by_prefix;
+    }
+
     /// Switch to the highlighted tab and close the plugin.
     fn confirm(&self) {
         if let Some(tab) = self
@@ -315,8 +322,8 @@ impl State {
         print_nested_list_with_coordinates(items, 0, 2, None, None);
 
         let hint = match self.mode {
-            Mode::Normal => "j/k move · / filter · enter open · q quit",
-            Mode::Insert => "type to filter · esc normal · enter open",
+            Mode::Normal => "j/k move · / filter · tab group · enter open · q quit",
+            Mode::Insert => "type to filter · esc normal · tab group · enter open",
         };
         print_text_with_coordinates(Text::new(hint), 0, 2 + count + 1, None, None);
     }
@@ -340,6 +347,12 @@ impl State {
             BareKey::Enter => {
                 self.confirm();
                 false
+            }
+
+            // toggle grouped / flat view
+            BareKey::Tab => {
+                self.toggle_grouping();
+                true
             }
 
             // enter filter mode
@@ -410,6 +423,11 @@ impl State {
             BareKey::Enter => {
                 self.confirm();
                 false
+            }
+            // toggle grouped / flat view (Tab isn't a filter char)
+            BareKey::Tab => {
+                self.toggle_grouping();
+                true
             }
             BareKey::Backspace => {
                 self.filter.pop();
